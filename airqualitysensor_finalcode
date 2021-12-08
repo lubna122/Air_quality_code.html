@@ -1,0 +1,156 @@
+
+#include <WiFi.h>
+#include <WebServer.h>
+#include "PMS.h"
+#include <BME280I2C.h>
+#include <MQ135.h>
+#include <HardwareSerial.h>
+#include <Wire.h>
+#include <ThingSpeak.h>
+
+PMS pms(Serial2);
+PMS::DATA data;
+  
+String val1;
+String val2;
+String val3;
+int sensorpin=A6;
+float air_quality;
+float rzero;
+float temp(NAN), hum(NAN), pres(NAN);
+
+BME280I2C bme;    // Default : forced mode, standby time = 1000 ms
+                  // Oversampling = pressure ×1, temperature ×1, humidity ×1, filter off,
+
+
+long myChannelNumber =1599677 ;
+const char myWriteAPIKey[] = "3AROY3Y5U52W916U";
+const char* ssid = "HUAWEI";
+const char* password = "12345678";
+const char* server = "api.thingspeak.com"; 
+
+WiFiClient client; 
+void setup()
+{
+  Serial.begin(9600);
+  Serial2.begin(9600);
+  bme.begin();
+  ThingSpeak.begin(client); 
+  Serial.println("Connecting to ");
+  Serial.println(ssid);
+ 
+  //connect to your local wi-fi network
+  WiFi.begin(ssid, password);
+ 
+  //check wi-fi is connected to wi-fi network
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("");
+  Serial.println("WiFi connected..!");
+  Serial.print("Got IP: ");
+  Serial.println(WiFi.localIP());
+
+  while(!Serial) {} // Wait
+
+  Wire.begin();
+
+  while(!bme.begin())
+  {
+    Serial.println("Could not find BME280 sensor!");
+    delay(1000);
+  }
+
+  switch(bme.chipModel())
+  {
+     case BME280::ChipModel_BME280:
+       Serial.println("Found BME280 sensor! Success.");
+       break;
+     case BME280::ChipModel_BMP280:
+       Serial.println("Found BMP280 sensor! No Humidity available.");
+       break;
+     default:
+       Serial.println("Found UNKNOWN sensor! Error!");
+  }
+ 
+}
+
+void loop(){
+  if (pms.read(data))
+  { val1 = data.PM_AE_UG_1_0;
+    val2 = data.PM_AE_UG_2_5;
+    val3 = data.PM_AE_UG_10_0;
+
+    Serial.println("*****************************");
+  
+    Serial.println("***Air Quality Monitor***");
+
+    Serial.println("*****************************");
+
+    Serial.println("Dust Concentration");
+ 
+    Serial.println("PM1.0 :" + val1 + "(ug/m3)");
+ 
+    Serial.println("PM2.5 :" + val2 + "(ug/m3)");
+ 
+    Serial.println("PM10  :" + val3 + "(ug/m3)");
+    Serial.println();
+  
+
+    MQ135 gasSensor=MQ135(A6);
+    rzero=gasSensor.getRZero();
+    air_quality=gasSensor.getPPM();
+    Serial.print("Zero Resistance: ");
+    Serial.print(rzero);
+    Serial.print("Gas Level: ");
+    Serial.print(air_quality);
+    Serial.println(" PPM");
+    Serial.println();
+
+
+   printBME280Data(&Serial);
+   delay(500);
+  
+
+   ThingSpeak.setField(1,val1);
+   ThingSpeak.setField(2,val2);
+   ThingSpeak.setField(3,val3);
+   ThingSpeak.writeFields(myChannelNumber,myWriteAPIKey);
+   ThingSpeak.writeField(myChannelNumber, 4, rzero, myWriteAPIKey);
+   ThingSpeak.writeField(myChannelNumber, 5, air_quality, myWriteAPIKey);
+   ThingSpeak.writeField(myChannelNumber, 6, temp, myWriteAPIKey);
+   ThingSpeak.writeField(myChannelNumber, 7, hum, myWriteAPIKey);
+   ThingSpeak.writeField(myChannelNumber, 8, pres, myWriteAPIKey);
+ }                  
+}
+/////////////////////////////////////////////////////////////////
+
+
+void printBME280Data(Stream* client)
+{
+   
+
+   BME280::TempUnit tempUnit(BME280::TempUnit_Celsius);
+   BME280::PresUnit presUnit(BME280::PresUnit_Pa);
+
+   bme.read(pres, temp, hum, tempUnit, presUnit);
+
+   Serial.print("Temp: ");
+   Serial.print(temp);
+   Serial.println("°"+ String(tempUnit == BME280::TempUnit_Celsius ? 'C' :'F'));
+   Serial.print(" Humidity: ");
+   Serial.print(hum);
+   Serial.println("% RH");
+   Serial.print(" Pressure: ");
+   Serial.print(pres);
+   Serial.println("Pa");
+   Serial.println("---------------------------");
+
+}
+
+
+ 
+
+ 
